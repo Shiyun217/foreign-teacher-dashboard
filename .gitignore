@@ -1,0 +1,18 @@
+node_modules/
+
+# Local analysis artifacts and source workbooks
+analysis-output/
+analysis-output-business-trusted/
+outputs/
+scripts/
+src/
+*.xlsx
+*.pdf
+*.ndjson
+*.json
+poster-superhero-vocabulary-edited.png
+启动外教看板.cmd
+*.md
+!README.md
+
+# Keep only the static dashboard pages and required assets for GitHub Pages.
