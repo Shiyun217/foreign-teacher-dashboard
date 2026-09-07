@@ -5,7 +5,6 @@ const roleColors = { CC: 'var(--cyan)', SS: 'var(--coral)', LP: 'var(--green)' }
 const state = { search: '', role: 'all', group: 'all', sort: 'favorites', direction: 'desc', page: 1, pageSize: 25 };
 
 function roleSummary(role) { return DATA.roles.find(row => row.role === role); }
-function dateOnly(value) { return value ? value.slice(0, 10) : '无记录'; }
 function multiple(a, b) { return `${(a / b).toFixed(1)} 倍`; }
 function toast(message) { const el = document.getElementById('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 2200); }
 
@@ -36,18 +35,18 @@ function renderKpis() {
 function renderRoleComparison() {
   const maxAverage = Math.max(...DATA.roles.map(row => row.average));
   const header = `<div class="role-row head"><div>端口</div><div>平均收藏</div><div>中位数</div><div>收藏合计</div><div>员工数</div><div>有收藏率</div></div>`;
-  const rows = DATA.roles.map(row => `<div class="role-row" style="--role-color:${roleColors[row.role]}"><div class="role-name">${row.role}</div><div class="average-bar"><div class="track"><span style="width:${row.average / maxAverage * 100}%;--bar:${roleColors[row.role]}"></span></div><strong>${fmt1.format(row.average)}</strong></div><div class="role-stat">${fmt1.format(row.median)}<span>典型水平</span></div><div class="role-stat">${fmtInt.format(row.totalFavorites)}<span>${fmtInt.format(row.uniqueTeachers)} 位去重外教</span></div><div class="role-stat">${row.employeeCount}<span>${row.zeroEmployeeCount} 人为 0</span></div><div class="role-stat ${row.activeRate === 1 ? 'good' : ''}">${pct(row.activeRate)}<span>近30天 ${pct(row.recentActiveRate)}</span></div></div>`).join('');
+  const rows = DATA.roles.map(row => `<div class="role-row" style="--role-color:${roleColors[row.role]}"><div class="role-name">${row.role}</div><div class="average-bar"><div class="track"><span style="width:${row.average / maxAverage * 100}%;--bar:${roleColors[row.role]}"></span></div><strong>${fmt1.format(row.average)}</strong></div><div class="role-stat">${fmt1.format(row.median)}<span>典型水平</span></div><div class="role-stat">${fmtInt.format(row.totalFavorites)}<span>员工去重后合计</span></div><div class="role-stat">${row.employeeCount}<span>${row.zeroEmployeeCount} 人为 0</span></div><div class="role-stat ${row.activeRate === 1 ? 'good' : ''}">${pct(row.activeRate)}<span>${row.activeEmployeeCount} 人有收藏</span></div></div>`).join('');
   document.getElementById('roleComparison').innerHTML = header + rows;
 }
 
 function renderInsights() {
   const cc = roleSummary('CC'), ss = roleSummary('SS'), lp = roleSummary('LP');
-  const topBalancedGroup = DATA.groups.find(row => row.group === 'HK-GZLP02小组');
+  const topGroup = DATA.groups[0];
   const insights = [
-    { tone: 'var(--green)', tag: '可复制', title: 'LP 可作为收藏运营标杆', body: `LP 人均 ${fmt1.format(lp.average)}、中位数 ${fmt1.format(lp.median)}，12 人全部有收藏；头部分布也比 CC / SS 更均衡。` },
+    { tone: 'var(--green)', tag: '可复制', title: 'LP 可作为收藏运营标杆', body: `LP 人均 ${fmt1.format(lp.average)}、中位数 ${fmt1.format(lp.median)}，${lp.employeeCount} 人全部有收藏；整体分布也比 CC / SS 更均衡。` },
     { tone: 'var(--amber)', tag: '需校准', title: 'CC / SS 的平均值高于典型水平', body: `CC 人均是中位数的 ${multiple(cc.average, cc.median)}，SS 为 ${multiple(ss.average, ss.median)}；建议考核同时看中位数与覆盖率。` },
-    { tone: 'var(--coral)', tag: '优先行动', title: '先激活 11 名零收藏员工', body: `CC 有 ${cc.zeroEmployeeCount} 人、SS 有 ${ss.zeroEmployeeCount} 人未收藏外教；先设置基础收藏清单，比继续推高头部更能改善覆盖。` },
-    { tone: 'var(--cyan)', tag: '小组洞察', title: '区分稳定高位与单人拉动', body: `${topBalancedGroup.group} 平均 ${fmt1.format(topBalancedGroup.average)}、中位数 ${fmt1.format(topBalancedGroup.median)}，表现稳定；GZ-SS01 平均虽高，但中位数仅 118。` },
+    { tone: 'var(--coral)', tag: '优先行动', title: `先激活 ${DATA.overall.zeroEmployeeCount} 名零收藏员工`, body: `CC 有 ${cc.zeroEmployeeCount} 人、SS 有 ${ss.zeroEmployeeCount} 人未收藏外教；先设置基础收藏清单，比继续推高头部更能改善覆盖。` },
+    { tone: 'var(--cyan)', tag: '小组洞察', title: '小组表现需结合样本量判断', body: `${topGroup.group} 当前人均 ${fmt1.format(topGroup.average)}、中位数 ${fmt1.format(topGroup.median)}，共 ${topGroup.employeeCount} 名员工；小样本小组不宜只看平均值。` },
   ];
   document.getElementById('insightList').innerHTML = insights.map(row => `<div class="insight" style="--tone:${row.tone}"><div class="insight-top"><b>${row.title}</b><i>${row.tag}</i></div><p>${row.body}</p></div>`).join('');
 }
@@ -95,7 +94,7 @@ function renderTable() {
   state.page = Math.min(state.page, pages);
   const start = (state.page - 1) * state.pageSize;
   const visible = rows.slice(start, start + state.pageSize);
-  document.getElementById('employeeBody').innerHTML = visible.length ? visible.map(row => `<tr style="--role-color:${roleColors[row.role]}"><td class="num rank ${row.overallRank <= 3 ? 'top' : ''}">#${row.overallRank}</td><td><div class="employee"><span class="avatar">${row.name.slice(-1)}</span><div><b>${row.name}</b><span>${row.account} · ${row.id}</span></div></div></td><td><span class="role-pill">${row.role}</span></td><td>${row.group}</td><td class="num fav-count ${row.favorites === 0 ? 'zero' : ''}">${fmtInt.format(row.favorites)}</td><td class="num">#${row.roleRank}</td><td class="date">${dateOnly(row.firstFavoriteAt)}</td><td class="date">${dateOnly(row.lastFavoriteAt)}</td></tr>`).join('') : `<tr><td class="empty" colspan="8">没有符合当前条件的员工</td></tr>`;
+  document.getElementById('employeeBody').innerHTML = visible.length ? visible.map(row => { const displayName = row.name || row.account; const subline = row.name ? `${row.account} · ${row.id}` : `员工 ID ${row.id}`; return `<tr style="--role-color:${roleColors[row.role]}"><td class="num rank ${row.overallRank <= 3 ? 'top' : ''}">#${row.overallRank}</td><td><div class="employee"><span class="avatar">${displayName.slice(-1)}</span><div><b>${displayName}</b><span>${subline}</span></div></div></td><td><span class="role-pill">${row.role}</span></td><td>${row.group}</td><td class="num fav-count ${row.favorites === 0 ? 'zero' : ''}">${fmtInt.format(row.favorites)}</td><td class="num">#${row.roleRank}</td></tr>`; }).join('') : `<tr><td class="empty" colspan="6">没有符合当前条件的员工</td></tr>`;
   const activeCount = rows.filter(row => row.favorites > 0).length;
   document.getElementById('tableSub').textContent = `${state.role === 'all' ? '全部端口' : state.role} · 默认按收藏外教数降序`;
   document.getElementById('resultCount').textContent = `共 ${rows.length} 名员工 · ${activeCount} 名有收藏 · 当前显示 ${visible.length} 名`;
@@ -107,9 +106,9 @@ function renderTable() {
 
 function exportCsv() {
   const rows = filteredRows();
-  const headers = ['总排名','端口排名','端口','员工ID','员工账号','员工姓名','当前小组','本人收藏外教数','最早收藏时间','最近收藏时间'];
+  const headers = ['总排名','端口排名','端口','员工ID','员工账号','员工姓名','当前小组','本人收藏外教数'];
   const escape = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const lines = rows.map(row => [row.overallRank,row.roleRank,row.role,row.id,row.account,row.name,row.group,row.favorites,row.firstFavoriteAt,row.lastFavoriteAt].map(escape).join(','));
+  const lines = rows.map(row => [row.overallRank,row.roleRank,row.role,row.id,row.account,row.name,row.group,row.favorites].map(escape).join(','));
   const blob = new Blob(['\ufeff' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob), link = document.createElement('a');
   link.href = url; link.download = `业务收藏外教排名_${state.role}_${DATA.dataDate}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -124,7 +123,7 @@ function bindEvents() {
   document.getElementById('prevPage').addEventListener('click', () => { state.page--; renderTable(); });
   document.getElementById('nextPage').addEventListener('click', () => { state.page++; renderTable(); });
   document.getElementById('exportBtn').addEventListener('click', exportCsv);
-  document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => { const key = th.dataset.sort; if (state.sort === key) state.direction = state.direction === 'asc' ? 'desc' : 'asc'; else { state.sort = key; state.direction = ['role','group','firstFavoriteAt','lastFavoriteAt'].includes(key) ? 'asc' : 'desc'; } state.page = 1; renderTable(); }));
+  document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => { const key = th.dataset.sort; if (state.sort === key) state.direction = state.direction === 'asc' ? 'desc' : 'asc'; else { state.sort = key; state.direction = ['role','group'].includes(key) ? 'asc' : 'desc'; } state.page = 1; renderTable(); }));
   const dialog = document.getElementById('methodDialog');
   document.getElementById('methodBtn').addEventListener('click', () => dialog.showModal());
   document.getElementById('methodClose').addEventListener('click', () => dialog.close());
