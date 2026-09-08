@@ -5,7 +5,7 @@ const roleColors = { CC: 'var(--cyan)', SS: 'var(--coral)', LP: 'var(--green)' }
 const SYNC_ENDPOINT = String(window.FAVORITES_SYNC_CONFIG?.endpoint || '').replace(/\/$/, '');
 const CACHE_KEY = 'business-favorites-shared-v1';
 const REQUIRED_HEADERS = ['外教id', '业务类型（港澳-cc/ss/lp）', '业务人员名称', '业务人员id'];
-const state = { search: '', role: 'all', group: 'all', sort: 'favorites', direction: 'desc', page: 1, pageSize: 25, upload: null, busy: false };
+const state = { search: '', role: 'all', group: 'all', sort: 'favorites', direction: 'desc', page: 1, pageSize: 25, upload: null, uploadFile: null, busy: false };
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const fixedTarget = (role, baseline) => role === 'LP' ? 250 : Number(baseline) < 150 ? 150 : 250;
@@ -324,12 +324,30 @@ async function decodeFile(file) {
   catch (_) { return new TextDecoder('gb18030').decode(bytes).replace(/^\ufeff/, ''); }
 }
 
-async function analyzeUpload(file) {
+function localDateString(date = new Date()) {
+  const year = date.getFullYear(), month = String(date.getMonth() + 1).padStart(2, '0'), day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function validDateString(year, month, day) {
+  const date = new Date(year, month - 1, day, 12);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? localDateString(date) : null;
+}
+
+function inferUploadDate(fileName) {
+  const name = String(fileName || '').replace(/\.csv$/i, '');
+  let match = name.match(/(20\d{2})(\d{2})(\d{2})/);
+  if (match) return validDateString(Number(match[1]), Number(match[2]), Number(match[3]));
+  match = name.match(/(20\d{2})[._-](\d{1,2})[._-](\d{1,2})/);
+  if (match) return validDateString(Number(match[1]), Number(match[2]), Number(match[3]));
+  match = name.match(/(?:^|[^\d])(\d{1,2})[._-](\d{1,2})(?:[^\d]|$)/);
+  if (match) return validDateString(new Date().getFullYear(), Number(match[1]), Number(match[2]));
+  return localDateString();
+}
+
+async function analyzeUpload(file, dataDate) {
   if (!/\.csv$/i.test(file.name)) throw new Error('请上传 CSV 格式的原始明细');
-  const dateMatch = file.name.match(/(20\d{6})/);
-  if (!dateMatch) throw new Error('文件名中未找到 YYYYMMDD 数据日期');
-  const compactDate = dateMatch[1];
-  const dataDate = `${compactDate.slice(0, 4)}-${compactDate.slice(4, 6)}-${compactDate.slice(6, 8)}`;
+  if (!/^20\d{2}-\d{2}-\d{2}$/.test(dataDate || '')) throw new Error('请选择有效的数据日期');
   const rows = parseCsv(await decodeFile(file));
   if (rows.length < 2) throw new Error('CSV 没有可统计的数据行');
   const headers = rows[0].map(value => String(value).trim());
@@ -368,13 +386,15 @@ function setImportProgress(mode, title, detail) {
 }
 
 function updatePublishButton() { document.getElementById('publishBtn').disabled = state.busy || !state.upload || !document.getElementById('publishKey').value.trim() || !SYNC_ENDPOINT; }
-async function handleFile(file) {
+async function handleFile(file, inferDate = true) {
   state.upload = null; updatePublishButton();
   if (!file) return;
+  state.uploadFile = file;
+  if (inferDate) document.getElementById('uploadDate').value = inferUploadDate(file.name);
   document.getElementById('uploadMeta').textContent = file.name;
   setImportProgress('working', '正在校验', '正在解析原始明细并核对员工底表...');
   try {
-    state.upload = await analyzeUpload(file);
+    state.upload = await analyzeUpload(file, document.getElementById('uploadDate').value);
     setImportProgress('success', '文件校验通过', `${state.upload.dataDate} · ${fmtInt.format(state.upload.sourceRows)} 行 · 去重后 ${fmtInt.format(state.upload.uniquePairCount)} 条 · 重复 ${fmtInt.format(state.upload.duplicatePairCount)} 条`);
   } catch (error) {
     setImportProgress('error', '文件校验失败', error.message || '请检查原始文件');
@@ -439,6 +459,7 @@ function bindEvents() {
   document.getElementById('uploadCancel').addEventListener('click', () => uploadDialog.close());
   uploadDialog.addEventListener('click', event => { if (event.target === uploadDialog) uploadDialog.close(); });
   document.getElementById('uploadFile').addEventListener('change', event => handleFile(event.target.files?.[0]));
+  document.getElementById('uploadDate').addEventListener('change', () => { if (state.uploadFile) handleFile(state.uploadFile, false); });
   document.getElementById('publishKey').addEventListener('input', updatePublishButton);
   document.getElementById('publishBtn').addEventListener('click', publishUpload);
 }
