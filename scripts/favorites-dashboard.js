@@ -181,6 +181,41 @@ function renderGroups() {
   document.getElementById('groupList').innerHTML = dashboardData.groups.slice(0, 10).map((row, index) => `<div class="group-row" style="--role-color:${roleColors[row.role]}"><span class="group-rank">${String(index + 1).padStart(2, '0')}</span><div class="group-name"><b>${row.role}</b>${escapeHtml(row.group)}</div><div class="group-stat">${row.employeeCount}<span>员工</span></div><div class="group-stat">${fmt1.format(row.average)}<span>平均</span></div><div class="group-stat">${fmt1.format(row.median)}<span>中位数</span></div></div>`).join('');
 }
 
+function aggregateEmployees(rows, label, role, total = false) {
+  const previousAvailable = rows.every(row => row.previousFavorites != null);
+  const current = rows.reduce((sum, row) => sum + row.favorites, 0);
+  const previous = previousAvailable ? rows.reduce((sum, row) => sum + row.previousFavorites, 0) : null;
+  const added = previous == null ? null : current - previous;
+  const achieved = rows.filter(row => row.favorites >= row.target).length;
+  return {
+    label, role, total,
+    employeeCount: rows.length,
+    target: rows.reduce((sum, row) => sum + row.target, 0),
+    current, previous, added,
+    growth: previous > 0 ? added / previous : null,
+    achieved,
+    achievementRate: rows.length ? achieved / rows.length : 0,
+  };
+}
+
+function renderGroupSummary() {
+  const rows = [];
+  for (const role of ['CC', 'SS', 'LP']) {
+    const roleRows = dashboardData.employees.filter(row => row.role === role);
+    const groups = [...new Set(roleRows.map(row => row.group))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    groups.forEach(group => rows.push(aggregateEmployees(roleRows.filter(row => row.group === group), group, role)));
+    rows.push(aggregateEmployees(roleRows, `${role}端口汇总`, role, true));
+  }
+  document.getElementById('groupSummaryBody').innerHTML = rows.map((row, index) => {
+    const isPortStart = index === 0 || rows[index - 1].role !== row.role;
+    const addedClass = row.added > 0 ? 'delta-up' : row.added < 0 ? 'delta-down' : '';
+    const added = row.added == null ? '--' : `${row.added > 0 ? '+' : ''}${fmtInt.format(row.added)}`;
+    const growth = row.growth == null ? '--' : `${row.growth > 0 ? '+' : ''}${pct(row.growth)}`;
+    return `<tr class="${isPortStart ? 'port-start ' : ''}${row.total ? 'port-total' : ''}" style="--role-color:${roleColors[row.role]}"><td>${row.total ? escapeHtml(row.label) : `<span class="role-pill">${row.role}</span> ${escapeHtml(row.label)}`}</td><td class="num">${fmtInt.format(row.employeeCount)}</td><td class="num">${fmtInt.format(row.target)}</td><td class="num">${fmtInt.format(row.current)}</td><td class="num">${row.previous == null ? '--' : fmtInt.format(row.previous)}</td><td class="num ${addedClass}">${added}</td><td class="num ${row.growth > 0 ? 'delta-up' : row.growth < 0 ? 'delta-down' : 'rate-zero'}">${growth}</td><td class="num">${fmtInt.format(row.achieved)}</td><td class="num ${row.achievementRate >= 0.5 ? 'rate-good' : ''}">${pct(row.achievementRate)}</td></tr>`;
+  }).join('');
+  document.getElementById('groupSummarySub').textContent = `数据日期 ${dashboardData.dataDate} · ${dashboardData.comparisonDate ? `昨日 ${dashboardData.comparisonDate}` : '暂无昨日基线'} · 目标为组内员工固定目标之和`;
+}
+
 function refreshGroupFilter() {
   const select = document.getElementById('groupFilter');
   const groups = [...new Set(dashboardData.employees.filter(row => state.role === 'all' || row.role === state.role).map(row => row.group))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
@@ -221,7 +256,7 @@ function renderTable() {
 }
 
 function renderAll() {
-  renderSummary(); renderKpis(); renderRoleComparison(); renderInsights(); renderDistribution(); renderGroups();
+  renderSummary(); renderKpis(); renderRoleComparison(); renderInsights(); renderDistribution(); renderGroups(); renderGroupSummary();
   document.getElementById('methodNotes').innerHTML = dashboardData.notes.map(row => `<div class="method-item"><b>${escapeHtml(row.item)}</b><span>${escapeHtml(row.description)}</span></div>`).join('');
   refreshGroupFilter(); renderTable();
   if (window.lucide) lucide.createIcons();
